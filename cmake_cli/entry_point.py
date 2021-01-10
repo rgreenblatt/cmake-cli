@@ -10,7 +10,9 @@ def try_run(path):
 
 def default_entry_point():
     try_run("./cmake_cli_extend")
+    try_run("./.cmake_cli_extend")
     try_run("./scripts/cmake_cli_extend")
+    try_run("./scripts/.cmake_cli_extend")
     BaseCMakeBuilder()
 
 if __name__ == "__main__":

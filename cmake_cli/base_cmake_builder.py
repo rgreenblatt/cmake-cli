@@ -7,23 +7,34 @@ import sys
 
 
 class BaseCMakeBuilder():
-    base_build_dir = "build"
-    pager_list = [["less", "-R"], ["bat", "-p"], ["more"]]
-    name = "cmake_cli"
+    @staticmethod
+    def base_build_dir():
+        return "build"
+
+    @staticmethod
+    def pager_list():
+        return  [["less", "-R"], ["bat", "-p"], ["more"]]
+
+    @staticmethod
+    def name():
+        return "cmake_cli"
+
+    @staticmethod
+    def ccache_default():
+        return False
 
     @staticmethod
     def exists_in_path(cmd):
         return shutil.which(cmd) is not None
 
-    def get_directory(self, is_release, forced=None):
-        if forced is not None:
-            return forced
-
-        return os.path.join(self.base_build_dir,
-                            "release" if is_release else "debug")
+    def exists_in_path_warn(self, cmd):
+        out = self.exists_in_path(cmd)
+        if not out:
+            print("WARN:", cmd, "not found in path")
+        return out
 
     def get_pager(self):
-        for pager in self.pager_list:
+        for pager in self.pager_list():
             if self.exists_in_path(pager[0]):
                 return pager
         return None
@@ -31,8 +42,7 @@ class BaseCMakeBuilder():
     def base_cmake_command(self, piped_commands):
         if piped_commands and self.exists_in_path("unbuffer"):
             return ["unbuffer", "cmake"]
-        else:
-            return ["cmake"]
+        return ["cmake"]
 
     @staticmethod
     def piped_runner(cmds):
@@ -62,9 +72,22 @@ class BaseCMakeBuilder():
     def runner(self, cmd):
         self.piped_runner([cmd])
 
+    @staticmethod
+    def extend_piped_commands(_):
+        pass
+
+    @staticmethod
+    def extend_gen_cmd(*_):
+        pass
+
+    @staticmethod
+    def extend_build_cmd(*_):
+        pass
+
     def build(self,
+              subargs,
               directory,
-              is_release,
+              is_release=False,
               debug_info=True,
               additional_gen_args=None,
               additional_build_args=None,
@@ -83,10 +106,22 @@ class BaseCMakeBuilder():
         if piped_commands is None:
             piped_commands = []
 
+        self.extend_piped_commands(piped_commands)
+
         if self.args.page:
             pager = self.get_pager()
             if pager is not None:
                 piped_commands.append(pager)
+
+        try:
+            is_release = subargs.release
+        except AttributeError:
+            pass
+
+        try:
+            debug_info = subargs.debug_info
+        except AttributeError:
+            pass
 
         if is_release:
             if debug_info:
@@ -100,25 +135,42 @@ class BaseCMakeBuilder():
         base_cmake = self.base_cmake_command(piped_commands)
 
         gen_args = [
-            "-S.",
-            "-G" + self.args.cmake_generator,
+            "-G" + self.args.generator,
             "-B" + directory,
             "-DCMAKE_BUILD_TYPE=" + build_type,
         ]
 
-        if self.args.use_ccache:
-            gen_args += [
-                "-DCMAKE_C_COMPILER_LAUNCHER=ccache",
-                "-DCMAKE_CXX_COMPILER_LAUNCHER=ccache",
-                "-DCMAKE_CUDA_COMPILER_LAUNCHER=ccache"
-            ]
+        if self.args.source_dir is not None:
+            gen_args += [self.args.source_dir]
+
+        if self.args.ccache:
+            if self.exists_in_path_warn("ccache"):
+                gen_args += [
+                    "-DCMAKE_C_COMPILER_LAUNCHER=ccache",
+                    "-DCMAKE_CXX_COMPILER_LAUNCHER=ccache",
+                    "-DCMAKE_CUDA_COMPILER_LAUNCHER=ccache"
+                ]
+
+        def append_args(cmd, args):
+            if args is not None:
+                cmd += args.split()
 
         gen_cmd = base_cmake + gen_args + additional_gen_args
+        self.extend_gen_cmd(subargs, gen_cmd)
+        try:
+            append_args(gen_cmd, subargs.gen_args)
+        except AttributeError:
+            pass
 
         build_cmd = base_cmake + ["--build", directory] + additional_build_args
+        self.extend_build_cmd(subargs, build_cmd)
+        try:
+            append_args(build_cmd, subargs.build_args)
+        except AttributeError:
+            pass
 
         if self.args.threads is None:
-            if self.args.cmake_generator == "Unix Makefiles":
+            if self.args.generator == "Unix Makefiles":
                 build_cmd += ["-j", str(multiprocessing.cpu_count())]
         else:
             build_cmd += ["-j", str(self.args.threads)]
@@ -131,7 +183,9 @@ class BaseCMakeBuilder():
     @staticmethod
     def build_default_command_parser(description,
                                      release_default=False,
-                                     has_release=True):
+                                     has_release=True,
+                                     skip_gen=False,
+                                     skip_build=False):
         parser = argparse.ArgumentParser(description=description)
         if has_release:
             parser.add_argument('--release',
@@ -141,8 +195,42 @@ class BaseCMakeBuilder():
             parser.add_argument('--debug',
                                 dest='release',
                                 action='store_false')
+            parser.add_argument('--debug-info',
+                                default=True,
+                                dest='debug_info',
+                                action='store_true')
+            parser.add_argument('--no-debug-info',
+                                default=True,
+                                dest='debug_info',
+                                action='store_false')
+        parser.add_argument('--directory', help='force specific directory')
+        if not skip_gen:
+            parser.add_argument(
+                '--gen-args',
+                help='additional arguments for cmake generation')
+        if not skip_build:
+            parser.add_argument('--build-args',
+                                help='additional arguments for cmake building')
 
         return parser
+
+    @staticmethod
+    def extend_directory(_):
+        return ""
+
+    # should be able to take args from build_default_command_parser
+    # build_default_command_parser must be called with has_release=True
+    def get_directory(self, args, forced_base=None):
+        if args.directory is not None:
+            return args.directory
+
+        if forced_base is None:
+            base = "release" if args.release else "debug"
+        else:
+            base = forced_base
+
+        return os.path.join(self.base_build_dir(),
+                            base + self.extend_directory(args))
 
     @staticmethod
     def parse_no_args(description, remaining_args):
@@ -167,9 +255,10 @@ class BaseCMakeBuilder():
                     args.executable_args)
 
     def cc_command(self, remaining_args):
-        args = self.parse_no_args('generate compile_commands.json',
-                                  remaining_args)
-        directory = os.path.join(self.base_build_dir, "compile_commands_dir")
+        args = self.build_default_command_parser(
+            'generate compile_commands.json',
+            has_release=False, skip_build=True).parse_args(remaining_args)
+        directory = os.path.join(self.base_build_dir(), "compile_commands_dir")
         self.build(args,
                    directory,
                    additional_gen_args=["-DCMAKE_EXPORT_COMPILE_COMMANDS=YES"],
@@ -182,7 +271,7 @@ class BaseCMakeBuilder():
 
     def clean_command(self, remaining_args):
         self.parse_no_args('clean project', remaining_args)
-        shutil.rmtree(self.base_build_dir, ignore_errors=True)
+        shutil.rmtree(self.base_build_dir(), ignore_errors=True)
 
     def format_command(self, remaining_args):
         self.parse_no_args('format code with clang-format', remaining_args)
@@ -191,6 +280,7 @@ class BaseCMakeBuilder():
         if not all(has_needed):
             print("can't format, missing: ",
                   ", ".join(e for e, has in zip(needed, has_needed) if has))
+            sys.exit(1)
         self.runner(
             ['bash', '-c', 'clang-format -i $(fd -e cu -e cpp -e h -e cuh'])
 
@@ -201,7 +291,7 @@ class BaseCMakeBuilder():
     def build_main_parser(self):
         main_parser = argparse.ArgumentParser(
             description='Simple and extensible cmake wrapper',
-            usage="{} [OPTIONS] <COMMAND> [<SUBOPTIONS>]".format(self.name))
+            usage="{} [OPTIONS] <COMMAND> [<SUBOPTIONS>]".format(self.name()))
         main_parser.add_argument('command', help='subcommand to run')
         main_parser.add_argument(
             '--generator',
@@ -209,31 +299,30 @@ class BaseCMakeBuilder():
             help='cmake generator (Ninja, Unix Makefiles, ...)')
         main_parser.add_argument('-p',
                                  '--pager',
-                                 dest='pager',
+                                 dest='page',
                                  action='store_true',
                                  help='page output')
         main_parser.add_argument('-P',
                                  '--no-pager',
-                                 dest='pager',
+                                 dest='page',
                                  action='store_false',
                                  help="don't page output")
         main_parser.add_argument('--ccache',
                                  dest='ccache',
                                  action='store_false',
-                                 default=True,
+                                 default=self.ccache_default(),
                                  help='use ccache')
         main_parser.add_argument('--no-ccache',
                                  dest='ccache',
                                  action='store_true',
-                                 default=True,
+                                 default=self.ccache_default(),
                                  help="don't use ccache")
         main_parser.add_argument('-j',
                                  '--threads',
                                  type=int,
                                  default=None,
                                  help='set num threads')
-        main_parser.add_argument('--directory',
-                                 help='force specific directory')
+        main_parser.add_argument('--source-dir', help='source directory')
 
         self.extend_main_parser(main_parser)
 
@@ -261,7 +350,7 @@ class BaseCMakeBuilder():
             cmd = commands[self.args.command]
         except KeyError:
             print("{0}: '{1}' is not a command. See '{0} --help'.".format(
-                self.name, self.args.command))
+                self.name(), self.args.command))
             sys.exit(1)
         cmd(remaining_args)
 
