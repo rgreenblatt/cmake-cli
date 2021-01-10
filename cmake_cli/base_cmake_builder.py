@@ -94,6 +94,11 @@ class BaseCMakeBuilder():
               piped_commands=None,
               skip_gen=False,
               skip_build=False):
+        try:
+            skip_gen = skip_gen or subargs.skip_gen
+        except AttributeError:
+            pass
+
         if skip_gen and skip_build:
             print(
                 "WARN: no commands will be run as gen and build were skipped")
@@ -208,6 +213,10 @@ class BaseCMakeBuilder():
             parser.add_argument(
                 '--gen-args',
                 help='additional arguments for cmake generation')
+            parser.add_argument(
+                '--skip-gen',
+                action='store_true',
+                help="don't generate, assume already generated")
         if not skip_build:
             parser.add_argument('--build-args',
                                 help='additional arguments for cmake building')
@@ -241,18 +250,6 @@ class BaseCMakeBuilder():
         args = self.build_default_command_parser('build project').parse_args(
             remaining_args)
         self.build(args, self.get_directory(args))
-
-    def run_command(self, remaining_args):
-        parser = self.build_default_command_parser('run executable')
-        parser.add_argument('executable', help='bin to run')
-        parser.add_argument('executable_args', nargs=argparse.REMAINDER)
-        args = parser.parse_args(remaining_args)
-        directory = self.get_directory(args)
-        self.build(args,
-                   directory,
-                   additional_build_args=["--target", args.executable])
-        self.runner([os.path.join(directory, args.executable)] +
-                    args.executable_args)
 
     def cc_command(self, remaining_args):
         args = self.build_default_command_parser(
