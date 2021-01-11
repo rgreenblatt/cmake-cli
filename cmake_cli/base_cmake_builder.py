@@ -332,7 +332,6 @@ class BaseCMakeBuilder():
     def commands(self):
         commands = {
             "build": self.build_command,
-            "run": self.run_command,
             "compile_commands": self.cc_command,
             "clean": self.clean_command,
             "format": self.format_command,
