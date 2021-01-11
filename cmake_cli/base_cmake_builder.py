@@ -306,12 +306,12 @@ class BaseCMakeBuilder():
                                  help="don't page output")
         main_parser.add_argument('--ccache',
                                  dest='ccache',
-                                 action='store_false',
+                                 action='store_true',
                                  default=self.ccache_default(),
                                  help='use ccache')
         main_parser.add_argument('--no-ccache',
                                  dest='ccache',
-                                 action='store_true',
+                                 action='store_false',
                                  default=self.ccache_default(),
                                  help="don't use ccache")
         main_parser.add_argument('-j',
