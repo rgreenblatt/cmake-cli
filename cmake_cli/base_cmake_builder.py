@@ -279,7 +279,7 @@ class BaseCMakeBuilder():
                   ", ".join(e for e, has in zip(needed, has_needed) if has))
             sys.exit(1)
         self.runner(
-            ['bash', '-c', 'clang-format -i $(fd -e cu -e cpp -e h -e cuh'])
+            ['bash', '-c', 'clang-format -i $(fd -e cu -e cpp -e h -e cuh)'])
 
     @staticmethod
     def extend_main_parser(_):
