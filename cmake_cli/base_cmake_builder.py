@@ -378,7 +378,7 @@ class BaseCMakeBuilder():
             sys.exit(1)
         cmd(remaining_args)
 
-    def __init__(self):
+    def run_with_cli_args(self):
         main_parser = self.build_main_parser()
 
         self.args, unknown = main_parser.parse_known_args()

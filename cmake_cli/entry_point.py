@@ -13,7 +13,7 @@ def default_entry_point():
     try_run("./.cmake_cli_extend")
     try_run("./scripts/cmake_cli_extend")
     try_run("./scripts/.cmake_cli_extend")
-    BaseCMakeBuilder()
+    BaseCMakeBuilder().run_with_cli_args()
 
 if __name__ == "__main__":
     default_entry_point()
