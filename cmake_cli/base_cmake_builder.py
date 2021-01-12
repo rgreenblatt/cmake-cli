@@ -24,6 +24,14 @@ class BaseCMakeBuilder():
         return False
 
     @staticmethod
+    def has_build_testing_default():
+        return True
+
+    @staticmethod
+    def build_testing_default():
+        return False
+
+    @staticmethod
     def exists_in_path(cmd):
         return shutil.which(cmd) is not None
 
@@ -156,6 +164,14 @@ class BaseCMakeBuilder():
                     "-DCMAKE_CUDA_COMPILER_LAUNCHER=ccache"
                 ]
 
+        try:
+            if subargs.build_testing:
+                gen_args += ["-DBUILD_TESTING=ON"]
+            else:
+                gen_args += ["-DBUILD_TESTING=OFF"]
+        except AttributeError:
+            pass
+
         def append_args(cmd, args):
             if args is not None:
                 cmd += args.split()
@@ -185,29 +201,14 @@ class BaseCMakeBuilder():
         if not skip_build:
             self.piped_runner([build_cmd] + piped_commands)
 
-    @staticmethod
-    def build_default_command_parser(description,
+    def build_default_command_parser(self,
+                                     description,
                                      release_default=False,
                                      has_release=True,
+                                     has_build_testing=None,
                                      skip_gen=False,
                                      skip_build=False):
         parser = argparse.ArgumentParser(description=description)
-        if has_release:
-            parser.add_argument('--release',
-                                default=release_default,
-                                dest='release',
-                                action='store_true')
-            parser.add_argument('--debug',
-                                dest='release',
-                                action='store_false')
-            parser.add_argument('--debug-info',
-                                default=True,
-                                dest='debug_info',
-                                action='store_true')
-            parser.add_argument('--no-debug-info',
-                                default=True,
-                                dest='debug_info',
-                                action='store_false')
         parser.add_argument('--directory', help='force specific directory')
         if not skip_gen:
             parser.add_argument(
@@ -217,6 +218,33 @@ class BaseCMakeBuilder():
                 '--skip-gen',
                 action='store_true',
                 help="don't generate, assume already generated")
+            if has_release:
+                parser.add_argument('--release',
+                                    default=release_default,
+                                    dest='release',
+                                    action='store_true')
+                parser.add_argument('--debug',
+                                    dest='release',
+                                    action='store_false')
+                parser.add_argument('--debug-info',
+                                    default=True,
+                                    dest='debug_info',
+                                    action='store_true')
+                parser.add_argument('--no-debug-info',
+                                    default=True,
+                                    dest='debug_info',
+                                    action='store_false')
+
+            if has_build_testing is None:
+                has_build_testing = self.has_build_testing_default()
+            if has_build_testing:
+                parser.add_argument('--build-testing',
+                                    default=self.build_testing_default(),
+                                    dest='build_testing',
+                                    action='store_true')
+                parser.add_argument('--no-build-testing',
+                                    dest='build_testing',
+                                    action='store_false')
         if not skip_build:
             parser.add_argument('--build-args',
                                 help='additional arguments for cmake building')
