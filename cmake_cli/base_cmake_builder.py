@@ -5,6 +5,8 @@ import shutil
 import os
 import sys
 
+base_has_build_testing_default = True
+base_build_testing_default = None
 
 class BaseCMakeBuilder():
     @staticmethod
@@ -25,11 +27,11 @@ class BaseCMakeBuilder():
 
     @staticmethod
     def has_build_testing_default():
-        return True
+        return base_has_build_testing_default
 
     @staticmethod
     def build_testing_default():
-        return None
+        return base_build_testing_default
 
     @staticmethod
     def c_family_file_extensions():
@@ -223,13 +225,15 @@ class BaseCMakeBuilder():
             self.piped_runner([build_cmd + native_build_tool_args] +
                               piped_commands)
 
-    def build_default_command_parser(self,
-                                     description,
-                                     release_default=False,
-                                     has_release=True,
-                                     has_build_testing=None,
-                                     skip_gen=False,
-                                     skip_build=False):
+    @staticmethod
+    def build_default_command_parser(
+            description,
+            release_default=False,
+            has_release=True,
+            has_build_testing=base_has_build_testing_default,
+            build_testing_default=base_build_testing_default,
+            skip_gen=False,
+            skip_build=False):
         parser = argparse.ArgumentParser(description=description)
         parser.add_argument('--directory', help='force specific directory')
         if not skip_gen:
@@ -257,11 +261,9 @@ class BaseCMakeBuilder():
                                     dest='debug_info',
                                     action='store_false')
 
-            if has_build_testing is None:
-                has_build_testing = self.has_build_testing_default()
             if has_build_testing:
                 parser.add_argument('--build-testing',
-                                    default=self.build_testing_default(),
+                                    default=build_testing_default,
                                     dest='build_testing',
                                     action='store_true')
                 parser.add_argument('--no-build-testing',
@@ -297,7 +299,11 @@ class BaseCMakeBuilder():
         parser.parse_args(remaining_args)
 
     def build_command(self, remaining_args):
-        parser = self.build_default_command_parser('build project')
+        parser = self.build_default_command_parser(
+            'build project',
+            has_build_testing=self.has_build_testing_default(),
+            build_testing_default=self.build_testing_default(),
+        )
         parser.add_argument('--target', help='cmake target')
 
         args = parser.parse_args(remaining_args)
@@ -425,7 +431,6 @@ class BaseCMakeBuilder():
             "build": self.build_command,
             "compile_commands": self.cc_command,
             "clean": self.clean_command,
-            "format": self.format_command,
             "format": self.format_command,
             "staged_is_formatted": self.error_if_staged_needs_format,
         }
