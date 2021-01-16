@@ -32,6 +32,14 @@ class BaseCMakeBuilder():
         return None
 
     @staticmethod
+    def c_family_file_extensions():
+        return [
+            "C", "cc", "cpp", "cxx", "c++", "h", "H", "hh", "hpp", "hxx",
+            "h++", "c", "cu", "cuh"
+        ]
+
+
+    @staticmethod
     def exists_in_path(cmd):
         return shutil.which(cmd) is not None
 
@@ -201,10 +209,19 @@ class BaseCMakeBuilder():
         else:
             build_cmd += ["-j", str(self.args.threads)]
 
+        native_build_tool_args = ["--"]
+
+        if self.args.keep_going:
+            if self.args.generator == "Unix Makefiles":
+                native_build_tool_args += ["-k"]
+            elif self.args.generator == "Ninja":
+                native_build_tool_args += ["-k", "0"]
+
         if not skip_gen:
             self.runner(gen_cmd)
         if not skip_build:
-            self.piped_runner([build_cmd] + piped_commands)
+            self.piped_runner([build_cmd + native_build_tool_args] +
+                              piped_commands)
 
     def build_default_command_parser(self,
                                      description,
@@ -312,16 +329,41 @@ class BaseCMakeBuilder():
         self.parse_no_args('clean project', remaining_args)
         shutil.rmtree(self.base_build_dir(), ignore_errors=True)
 
+    def find_c_family_files_command(self, needed):
+        needed.append('fd')
+        return 'fd ' + ' '.join(['-e ' + ext for ext in
+                                 self.c_family_file_extensions()])
+
+    def check_needed(self, message, needed):
+        has_needed = [self.exists_in_path(e) for e in needed]
+        if not all(has_needed):
+            print(message + "missing: ",
+                  ", ".join(e for e, has in zip(needed, has_needed) if has))
+            sys.exit(1)  # TODO: don't exit???
+
     def format_command(self, remaining_args):
         self.parse_no_args('format code with clang-format', remaining_args)
         needed = ["bash", "clang-format", "fd"]
-        has_needed = [self.exists_in_path(e) for e in needed]
-        if not all(has_needed):
-            print("can't format, missing: ",
-                  ", ".join(e for e, has in zip(needed, has_needed) if has))
-            sys.exit(1)
-        self.runner(
-            ['bash', '-c', 'clang-format -i $(fd -e cu -e cpp -e h -e cuh)'])
+        find_cmd = self.find_c_family_files_command(needed)
+        self.check_needed("can't format, ", needed)
+        self.runner([
+            'bash', '-c',
+            'clang-format -i $({})'.format(find_cmd)
+        ])
+
+    def find_staged_c_family_files_cmd(self, needed):
+        needed.append('git')
+        return "git diff --cached --name-only --diff-filter=ACMR " + ' '.join(
+            ['"*.{}"'.format(ext) for ext in self.c_family_file_extensions()])
+
+    def error_if_staged_needs_format(self, remaining_args):
+        self.parse_no_args('error if staged files need formating',
+                           remaining_args)
+        self.runner([
+            'bash', '-c', 'clang-format --dry-run --Werror $({})'.format(
+                self.find_staged_c_family_files_cmd([]))
+        ])
+
 
     @staticmethod
     def extend_main_parser(_):
@@ -331,7 +373,10 @@ class BaseCMakeBuilder():
         main_parser = argparse.ArgumentParser(
             description='Simple and extensible cmake wrapper',
             usage="{} [OPTIONS] <COMMAND> [<SUBOPTIONS>]".format(self.name()))
-        main_parser.add_argument('command', help='subcommand to run')
+        main_parser.add_argument(
+            'command',
+            help='subcommand to run (' +
+            ', '.join(self.commands().keys()) + ')')
         main_parser.add_argument(
             '--generator',
             default='Ninja',
@@ -361,6 +406,10 @@ class BaseCMakeBuilder():
                                  type=int,
                                  default=None,
                                  help='set num threads')
+        main_parser.add_argument('-k',
+                                 '--keep-going',
+                                 action='store_true',
+                                 help='keep going after build failure')
         main_parser.add_argument('--source-dir', help='source directory')
 
         self.extend_main_parser(main_parser)
@@ -377,6 +426,8 @@ class BaseCMakeBuilder():
             "compile_commands": self.cc_command,
             "clean": self.clean_command,
             "format": self.format_command,
+            "format": self.format_command,
+            "staged_is_formatted": self.error_if_staged_needs_format,
         }
         self.extend_commands(commands)
 
@@ -385,6 +436,8 @@ class BaseCMakeBuilder():
     def pick_and_use_sub_command(self, remaining_args):
         commands = self.commands()
         try:
+            print(self.args.command)
+            print(list(commands.keys()))
             cmd = commands[self.args.command]
         except KeyError:
             print("{0}: '{1}' is not a command. See '{0} --help'.".format(
