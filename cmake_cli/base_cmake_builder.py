@@ -29,7 +29,7 @@ class BaseCMakeBuilder():
 
     @staticmethod
     def build_testing_default():
-        return False
+        return None
 
     @staticmethod
     def exists_in_path(cmd):
@@ -47,10 +47,14 @@ class BaseCMakeBuilder():
                 return pager
         return None
 
-    def base_cmake_command(self, piped_commands):
+    @staticmethod
+    def cmake_command():
+        return "cmake"
+
+    def build_cmake_command(self, piped_commands):
         if piped_commands and self.exists_in_path("unbuffer"):
-            return ["unbuffer", "cmake"]
-        return ["cmake"]
+            return ["unbuffer", self.cmake_command()]
+        return [self.cmake_command()]
 
     @staticmethod
     def piped_runner(cmds):
@@ -145,8 +149,6 @@ class BaseCMakeBuilder():
             build_type = "Debug"
             assert debug_info
 
-        base_cmake = self.base_cmake_command(piped_commands)
-
         gen_args = [
             "-G" + self.args.generator,
             "-B" + directory,
@@ -165,10 +167,11 @@ class BaseCMakeBuilder():
                 ]
 
         try:
-            if subargs.build_testing:
-                gen_args += ["-DBUILD_TESTING=ON"]
-            else:
-                gen_args += ["-DBUILD_TESTING=OFF"]
+            if subargs.build_testing is not None:
+                if subargs.build_testing:
+                    gen_args += ["-DBUILD_TESTING=ON"]
+                else:
+                    gen_args += ["-DBUILD_TESTING=OFF"]
         except AttributeError:
             pass
 
@@ -176,14 +179,16 @@ class BaseCMakeBuilder():
             if args is not None:
                 cmd += args.split()
 
-        gen_cmd = base_cmake + gen_args + additional_gen_args
+        gen_cmd = [self.cmake_command()] + gen_args + additional_gen_args
         self.extend_gen_cmd(subargs, gen_cmd)
         try:
             append_args(gen_cmd, subargs.gen_args)
         except AttributeError:
             pass
 
-        build_cmd = base_cmake + ["--build", directory] + additional_build_args
+        build_cmd = self.build_cmake_command(piped_commands) + [
+            "--build", directory
+        ] + additional_build_args
         self.extend_build_cmd(subargs, build_cmd)
         try:
             append_args(build_cmd, subargs.build_args)
@@ -197,7 +202,7 @@ class BaseCMakeBuilder():
             build_cmd += ["-j", str(self.args.threads)]
 
         if not skip_gen:
-            self.piped_runner([gen_cmd] + piped_commands)
+            self.runner(gen_cmd)
         if not skip_build:
             self.piped_runner([build_cmd] + piped_commands)
 
@@ -275,9 +280,18 @@ class BaseCMakeBuilder():
         parser.parse_args(remaining_args)
 
     def build_command(self, remaining_args):
-        args = self.build_default_command_parser('build project').parse_args(
-            remaining_args)
-        self.build(args, self.get_directory(args))
+        parser = self.build_default_command_parser('build project')
+        parser.add_argument('--target', help='cmake target')
+
+        args = parser.parse_args(remaining_args)
+
+        additional_build_args = None
+        if args.target is not None:
+            additional_build_args = ["--target", args.target]
+
+        self.build(args,
+                   self.get_directory(args),
+                   additional_build_args=additional_build_args)
 
     def cc_command(self, remaining_args):
         args = self.build_default_command_parser(
