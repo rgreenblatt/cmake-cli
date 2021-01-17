@@ -358,9 +358,11 @@ class BaseCMakeBuilder():
         ])
 
     def find_staged_c_family_files_cmd(self, needed):
-        needed.append('git')
-        return "git diff --cached --name-only --diff-filter=ACMR " + ' '.join(
-            ['"*.{}"'.format(ext) for ext in self.c_family_file_extensions()])
+        # use fd to read ignore file
+        needed += ['git', 'fd']
+        return "git diff --cached --name-only --diff-filter=ACMR " + ' '.join([
+            '"*.{}"'.format(ext) for ext in self.c_family_file_extensions()
+        ]) + '| xargs --no-run-if-empty -n 1 fd --fixed-strings --full-path'
 
     def error_if_staged_needs_format(self, remaining_args):
         self.parse_no_args('error if staged files need formating',
