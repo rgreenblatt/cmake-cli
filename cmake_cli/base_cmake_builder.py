@@ -122,7 +122,7 @@ class BaseCMakeBuilder():
     def build(self,
               directory,
               is_release=False,
-              debug_info=True,
+              release_debug_info=True,
               additional_gen_args=None,
               additional_build_args=None,
               piped_commands=None,
@@ -153,16 +153,15 @@ class BaseCMakeBuilder():
             with suppress(AttributeError):
                 is_release = self.args.release
             with suppress(AttributeError):
-                debug_info = self.args.debug_info
+                release_debug_info = self.args.release_debug_info
 
             if is_release:
-                if debug_info:
+                if release_debug_info:
                     build_type = "RelWithDebInfo"
                 else:
                     build_type = "Release"
             else:
                 build_type = "Debug"
-                assert debug_info
 
             gen_args = []
 
@@ -291,14 +290,17 @@ class BaseCMakeBuilder():
                 parser.add_argument('--debug',
                                     dest='release',
                                     action='store_false')
-                parser.add_argument('--debug-info',
-                                    default=True,
-                                    dest='debug_info',
-                                    action='store_true')
-                parser.add_argument('--no-debug-info',
-                                    default=True,
-                                    dest='debug_info',
-                                    action='store_false')
+                parser.add_argument('--release-debug-info',
+                                    default=False,
+                                    dest='release_debug_info',
+                                    action='store_true',
+                                    help='enable debug info for release build')
+                parser.add_argument(
+                    '--no-release-debug-info',
+                    default=False,
+                    dest='release_debug_info',
+                    action='store_false',
+                    help='disable debug info for release build')
 
             if has_build_testing:
                 parser.add_argument('--build-testing',
@@ -354,7 +356,13 @@ class BaseCMakeBuilder():
             return self.args.directory
 
         if forced_base is None:
-            base = "release" if self.args.release else "debug"
+            if self.args.release:
+                base = "release"
+                if self.args.release_debug_info:
+                    base += "_deb_info"
+            else:
+                base = "debug"
+
         else:
             base = forced_base
 
