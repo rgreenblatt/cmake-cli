@@ -429,6 +429,7 @@ class BaseCMakeBuilder():
     def xargs_cmd():
         return 'xargs --no-run-if-empty -n 1'
 
+    # should formatting even be part of this project?
     @staticmethod
     def format_add_args(parser):
         parser.description = 'format code with clang-format'
