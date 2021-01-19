@@ -457,12 +457,12 @@ class BaseCMakeBuilder():
                 ['git', 'fd'])
 
     @staticmethod
-    def error_if_staged_needs_format_add_args(parser):
+    def staged_format_check_add_args(parser):
         parser.description = 'error if staged files need formating'
         parser.add_argument('--clang-format-args',
                             default="--dry-run --Werror")
 
-    def error_if_staged_needs_format_command(self):
+    def staged_format_check_command(self):
         self.base_format_command(*self.find_staged_c_family_files_cmd())
 
     @staticmethod
@@ -479,8 +479,8 @@ class BaseCMakeBuilder():
             "compile_commands": (self.cc_add_args, self.cc_command),
             "clean": (self.clean_add_args, self.clean_command),
             "format": (self.format_add_args, self.format_command),
-            "staged_is_formatted": (self.error_if_staged_needs_format_add_args,
-                                    self.error_if_staged_needs_format_command),
+            "staged_format_check": (self.staged_format_check_add_args,
+                                    self.staged_format_check_command),
         }
         self.extend_commands(commands)
 
