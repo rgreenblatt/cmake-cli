@@ -17,7 +17,7 @@ class BaseCMakeBuilder():
 
     @staticmethod
     def pager_list():
-        return [["less", "-R"], ["bat", "-p"], ["more"]]
+        return [["less", "-RFX"], ["bat", "-p"], ["more"]]
 
     @staticmethod
     def name():
@@ -72,20 +72,19 @@ class BaseCMakeBuilder():
 
     @staticmethod
     def cmake_command():
-        return "cmake"
+        return ["cmake"]
 
-    def build_cmake_command(self, piped_commands):
-        if piped_commands and self.exists_in_path("unbuffer"):
-            return ["unbuffer", self.cmake_command()]
-        return [self.cmake_command()]
+    def build_cmake_command(self):
+        return self.cmake_command()
 
     @staticmethod
-    def piped_runner(cmds):
+    def piped_runner(cmds, env=None):
         processes = []
         cmd_process = None
         print("running:", cmds)
         for i, c in enumerate(cmds):
             last = i == len(cmds) - 1
+            first = i == 0
             if last:
                 stdout = None
                 stderr = None
@@ -96,7 +95,8 @@ class BaseCMakeBuilder():
                 c,
                 stdout=stdout,
                 stderr=stderr,
-                stdin=None if cmd_process is None else cmd_process.stdout)
+                stdin=None if cmd_process is None else cmd_process.stdout,
+                env=env if first else None)
             processes.append(cmd_process)
 
         for process in reversed(processes):
@@ -104,8 +104,8 @@ class BaseCMakeBuilder():
             if process.returncode != 0:
                 sys.exit(process.returncode)
 
-    def runner(self, cmd):
-        self.piped_runner([cmd])
+    def runner(self, cmd, env=None):
+        self.piped_runner([cmd], env=env)
 
     @staticmethod
     def extend_piped_commands():
@@ -192,8 +192,8 @@ class BaseCMakeBuilder():
                     else:
                         gen_args += ["-DBUILD_TESTING=OFF"]
 
-            gen_cmd = ([self.cmake_command()] + gen_args +
-                       additional_gen_args + self.extend_gen_cmd())
+            gen_cmd = (self.cmake_command() + gen_args + additional_gen_args +
+                       self.extend_gen_cmd())
             with suppress(AttributeError):
                 append_args(gen_cmd, self.args.gen_args)
 
@@ -215,9 +215,8 @@ class BaseCMakeBuilder():
 
             piped_commands += self.extend_piped_commands()
 
-            build_cmd = (self.build_cmake_command(piped_commands) +
-                         build_args + additional_build_args +
-                         self.extend_build_cmd())
+            build_cmd = (self.build_cmake_command() + build_args +
+                         additional_build_args + self.extend_build_cmd())
             with suppress(AttributeError):
                 append_args(build_cmd, self.args.build_args)
 
@@ -232,8 +231,14 @@ class BaseCMakeBuilder():
                 append_args(native_build_tool_args,
                             self.args.native_build_tool_args)
 
+            build_env = None
+            if self.args.force_color or (piped_commands
+                                         and self.args.force_color_when_piped):
+                build_env = {"CLICOLOR_FORCE": "TRUE"}
+
             self.piped_runner([build_cmd + native_build_tool_args] +
-                              piped_commands)
+                              piped_commands,
+                              env=build_env)
 
     def build_default_command_parser(self,
                                      parser,
@@ -295,12 +300,10 @@ class BaseCMakeBuilder():
                                     dest='release_debug_info',
                                     action='store_true',
                                     help='enable debug info for release build')
-                parser.add_argument(
-                    '--no-release-debug-info',
-                    default=False,
-                    dest='release_debug_info',
-                    action='store_false',
-                    help='disable debug info for release build')
+                parser.add_argument('--no-release-debug-info',
+                                    default=False,
+                                    dest='release_debug_info',
+                                    action='store_false')
 
             if has_build_testing:
                 parser.add_argument('--build-testing',
@@ -319,8 +322,7 @@ class BaseCMakeBuilder():
             parser.add_argument('-P',
                                 '--no-pager',
                                 dest='page',
-                                action='store_false',
-                                help="don't page build output")
+                                action='store_false')
             parser.add_argument('-j',
                                 '--threads',
                                 type=int,
@@ -330,6 +332,25 @@ class BaseCMakeBuilder():
                                 '--keep-going',
                                 action='store_true',
                                 help='keep going after build failure')
+            parser.add_argument(
+                '--force-color-when-piped',
+                action='store_true',
+                dest='force_color_when_piped',
+                default=True,
+                help='force color from build tool only if output is piped')
+            parser.add_argument('--no-force-color-when-piped',
+                                action='store_false',
+                                dest='force_color_when_piped',
+                                default=True)
+            parser.add_argument('--force-color',
+                                action='store_false',
+                                dest='force_color',
+                                default=False,
+                                help="force color from build tool")
+            parser.add_argument('--no-force-color',
+                                action='store_false',
+                                dest='force_color',
+                                default=False)
             parser.add_argument('--build-args',
                                 help='additional args for cmake building')
             parser.add_argument(
