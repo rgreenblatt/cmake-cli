@@ -469,11 +469,13 @@ class BaseCMakeBuilder():
     def format_command(self):
         self.base_format_command(*self.find_c_family_files_command())
 
-    def find_staged_c_family_files_cmd(self):
+    def git_diff_find_c_family_files_cmd(self, args):
         # use fd to read ignore file
-        return ("git diff --cached --name-only --diff-filter=ACMR " + ' '.join(
-            ['"*.{}"'.format(ext)
-             for ext in self.c_family_file_extensions()]) +
+        return ("git diff " + args + " --name-only --diff-filter=ACMR " +
+                ' '.join([
+                    '"*.{}"'.format(ext)
+                    for ext in self.c_family_file_extensions()
+                ]) +
                 '| {} fd --fixed-strings --full-path'.format(self.xargs_cmd()),
                 ['git', 'fd'])
 
@@ -484,7 +486,21 @@ class BaseCMakeBuilder():
                             default="--dry-run --Werror")
 
     def staged_format_check_command(self):
-        self.base_format_command(*self.find_staged_c_family_files_cmd())
+        self.base_format_command(
+            *self.git_diff_find_c_family_files_cmd('--cached'))
+
+    @staticmethod
+    def format_diff_add_args(parser):
+        parser.description = 'format files which have changed'
+        parser.add_argument('--clang-format-args', default="-i")
+        parser.add_argument('--staged', action='store_true')
+
+    def format_diff_command(self):
+        diff_args = ''
+        if self.args.staged:
+            diff_args = 'HEAD~1'
+        self.base_format_command(
+            *self.git_diff_find_c_family_files_cmd(diff_args))
 
     @staticmethod
     def extend_main_parser(_):
@@ -502,6 +518,8 @@ class BaseCMakeBuilder():
             "format": (self.format_add_args, self.format_command),
             "staged_format_check": (self.staged_format_check_add_args,
                                     self.staged_format_check_command),
+            "format_diff":
+            (self.format_diff_add_args, self.format_diff_command),
         }
         self.extend_commands(commands)
 
