@@ -531,7 +531,7 @@ class BaseCMakeBuilder():
             # usage="{} [OPTIONS] <COMMAND> [<SUBOPTIONS>]".format(self.name())
         )
         self.extend_main_parser(parser)
-        subparsers = parser.add_subparsers(dest="command")
+        subparsers = parser.add_subparsers(dest="command", required=True)
         for command_name, (add_args, _) in self.commands().items():
             add_args(subparsers.add_parser(command_name))
 
@@ -551,4 +551,7 @@ class BaseCMakeBuilder():
 
         self.args = main_parser.parse_args()
 
-        self.pick_and_use_sub_command()
+        try:
+            self.pick_and_use_sub_command()
+        except KeyboardInterrupt:
+            sys.exit(1)
